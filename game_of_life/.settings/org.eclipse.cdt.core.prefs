@@ -1,0 +1,9 @@
+eclipse.preferences.version=1
+environment/project/com.xmos.cdt.toolchain.52529517/XDE_BUILD/delimiter=\:
+environment/project/com.xmos.cdt.toolchain.52529517/XDE_BUILD/operation=append
+environment/project/com.xmos.cdt.toolchain.52529517/XDE_BUILD/value=true
+environment/project/com.xmos.cdt.toolchain.52529517/XMOS_MODULE_PATH/delimiter=\:
+environment/project/com.xmos.cdt.toolchain.52529517/XMOS_MODULE_PATH/operation=append
+environment/project/com.xmos.cdt.toolchain.52529517/XMOS_MODULE_PATH/value=/Users/faizaan/Documents/University/2017-2018/Concurrent Computing/antDefender\:/Users/faizaan/Documents/University/2017-2018/Concurrent Computing/helloTile\:/Users/faizaan/Documents/University/2017-2018/Concurrent Computing/parallelAnts\:/Users/faizaan/Documents/University/2017-2018/Concurrent Computing/queenAnts\:/Users/faizaan/Documents/University/2017-2018/Concurrent Computing/superQueenAnts\:/Users/faizaan/Documents/University/2017-2018/Concurrent Computing/timerDelay
+environment/project/com.xmos.cdt.toolchain.52529517/append=true
+environment/project/com.xmos.cdt.toolchain.52529517/appendContributed=true
