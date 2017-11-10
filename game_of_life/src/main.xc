@@ -86,9 +86,9 @@ int countNeighbours(uchar board[IMHT][IMWD], int x, int y){
 }
 
 int aliveOrDead(int neighbourCount, int currentCell){
-    if (neighbourCount < 2) return 0;
-    else if (neighbourCount == 2 || neighbourCount == 3) return ALIVECELL;
-    else if (neighbourCount > 3) return 0;
+    if (currentCell == ALIVECELL && neighbourCount < 2) return 0;
+    else if (currentCell == ALIVECELL && (neighbourCount == 2 || neighbourCount == 3)) return ALIVECELL;
+    else if (currentCell == ALIVECELL && neighbourCount > 3) return 0;
     else if ((currentCell == 0) && (neighbourCount == 3)) return ALIVECELL;
     else return currentCell;
 }
@@ -148,21 +148,17 @@ void distributor(chanend cIn, chanend cOut, chanend cControl, chanend cWorker)
 
   //Take val from worker then send to data out
   printf( "Processing...\n" );
+
   for( int y = 0; y < IMHT; y++ ) {   //go through all lines
-    for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
+      for( int x = 0; x < IMWD; x++ ) {
 
-        val = board[y][x];
+          cWorker <: val;                //send permission to worker to update cell
+          cWorker :> val;                //receive updated cell
 
-        //printf("VAL BEFORE: %d ", val);
-
-        cWorker <: val;                //send pixel to worker for updated pixel
-        cWorker :> val;                //get back manipulated pixel
-
-        //printf("VAL AFTER: %d ", val);
-
-        cOut <: val;                   //output manipulated pixel
-    }
+          cOut <: val;                   //output manipulated pixel
+      }
   }
+
   printf( "\nOne processing round completed...\n" );
 }
 
@@ -194,22 +190,23 @@ void worker(chanend cWorker){
     // get currentCell from distributor, manipulate and insert into newBoard
     for (int y = 0; y < IMHT; y++){
         for (int x = 0; x < IMWD; x++){
-            cWorker :> currentCell;
             aliveNeighbours = countNeighbours(board, y, x);
-            printf("ALIVE NEIGHBOURS = %d", aliveNeighbours);
-            updatedCell = aliveOrDead(aliveNeighbours, currentCell);
+            //printf("AL = %d ", aliveNeighbours);
+            newBoard[y][x] = aliveNeighbours;
+        }
+    }
+
+    //use newBoard full of neighbourCounts to convert into updated cell status
+    for (int y = 0; y < IMHT; y++){
+        for (int x = 0; x < IMWD; x++){
+            cWorker :> currentCell;
+            currentCell = board[y][x];
+            updatedCell = aliveOrDead(newBoard[y][x], currentCell);
             newBoard[y][x] = updatedCell;
             cWorker <: updatedCell;
         }
     }
 
-    // go through newBoard and send back to distributor
-    /*for (int y = 0; y < IMHT; y++){
-        for (int x = 0; x < IMWD; x++){
-            updatedCell = newBoard[y][x];
-            cWorker <: updatedCell;
-        }
-    }*/
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
