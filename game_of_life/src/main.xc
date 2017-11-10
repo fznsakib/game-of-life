@@ -28,27 +28,29 @@ port p_sda = XS1_PORT_1F;
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //
-// Read Image from PGM file from path infname[] to channel c_out
+// Read Image from PGM file from path infname[] to channel cOut
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void DataInStream(char infname[], chanend c_out)
+void DataInStream(char infname[], chanend cOut)
 {
   int res;
   uchar line[ IMWD ];
+
   printf( "DataInStream: Start...\n" );
 
   //Open PGM file
   res = _openinpgm( infname, IMWD, IMHT );
   if( res ) {
-    printf( "DataInStream: Error openening %s\n.", infname );
+    printf( "DataInStream: Error opening %s\n.", infname );
     return;
   }
 
-  //Read image line-by-line and send byte by byte to channel c_out
+  //Read image line-by-line and send byte by byte to channel cOut
   for( int y = 0; y < IMHT; y++ ) {
     _readinline( line, IMWD );
     for( int x = 0; x < IMWD; x++ ) {
-      c_out <: line[ x ];
+      cOut <: line[x];
+
       printf( "-%4.1d ", line[ x ] ); //show image values
     }
     printf( "\n" );
@@ -60,6 +62,31 @@ void DataInStream(char infname[], chanend c_out)
   return;
 }
 
+
+/////////////////////////////////////////////////////////////////////////////////////////
+//
+// Function to pack 8 bytes into one 8-bit value and vice-versa
+//
+/////////////////////////////////////////////////////////////////////////////////////////
+
+int ultimatePacker69(uchar inputByte[8]){
+    int binaryRep = 0;
+    int shift = 7;
+
+    for (int i = 0; i < 8; i++){
+        if (inputByte[i] == 255) (binaryRep = binaryRep | 1 << (shift - i));
+    }
+    return binaryRep;
+}
+
+uchar* alias ultimateUnpacker(int inputInt){
+    uchar dataArray[IMWD];
+    int shift = 7;
+    for (int i = 0; i < 8; i++){
+        dataArray[i] = inputInt & 1 << (shift - i);
+    }
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //
 // Start your implementation by changing this function to implement the game of life
@@ -67,7 +94,8 @@ void DataInStream(char infname[], chanend c_out)
 // Currently the function just inverts the image
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void distributor(chanend c_in, chanend c_out, chanend fromAcc)
+
+void distributor(chanend cIn, chanend cOut, chanend fromAcc, chanend cWorker)
 {
   uchar val;
 
@@ -76,15 +104,20 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc)
   printf( "Waiting for Board Tilt...\n" );
   fromAcc :> int value;
 
-  //Read in and do something with your image values..
-  //This just inverts every pixel, but you should
-  //change the image according to the "Game of Life"
+  //Read in val from data in and send to worker
+  for( int y = 0; y < IMHT; y++ ) {   //go through all lines
+      for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
+        cIn :> val;                    //read the pixel value
+        cWorker <: val;                //send some modified pixel out
+      }
+    }
+
+  //Take val from worker then send to data out
   printf( "Processing...\n" );
   for( int y = 0; y < IMHT; y++ ) {   //go through all lines
     for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
-      c_in :> val;                    //read the pixel value
-
-      c_out <: (uchar)( val ^ 0xFF ); //send some modified pixel out
+      cWorker :> val;                    //read the pixel value
+      cOut <: val; //send some modified pixel out
     }
   }
   printf( "\nOne processing round completed...\n" );
@@ -92,10 +125,26 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc)
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //
-// Write pixel stream from channel c_in to PGM image file
+// Worker functions being fed from distributor, each worker is working on a different
+// part of the image
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void DataOutStream(char outfname[], chanend c_in)
+
+void worker(chanend cWorker){
+    unsigned int aliveNeighbours = 0;
+    unsigned char board[IMHT][IMWD];
+    unsigned char newBoard[IMHT][IMWD];
+    unsigned char currentCell, updatedCell;
+
+
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+//
+// Write pixel stream from channel cIn to PGM image file
+//
+/////////////////////////////////////////////////////////////////////////////////////////
+void DataOutStream(char outfname[], chanend cIn)
 {
   int res;
   uchar line[ IMWD ];
@@ -111,7 +160,7 @@ void DataOutStream(char outfname[], chanend c_in)
   //Compile each line of the image and write the image line-by-line
   for( int y = 0; y < IMHT; y++ ) {
     for( int x = 0; x < IMWD; x++ ) {
-      c_in :> line[ x ];
+      cIn :> line[ x ];
     }
     _writeoutline( line, IMWD );
     printf( "DataOutStream: Line written...\n" );
@@ -177,14 +226,15 @@ i2c_master_if i2c[1];               //interface to orientation
 
 char infname[] = "test.pgm";     //put your input image path here
 char outfname[] = "testout.pgm"; //put your output image path here
-chan c_inIO, c_outIO, c_control;    //extend your channel definitions here
+chan cInIO, cOutIO, cControl, cWorker;    //extend your channel definitions here
 
 par {
-    i2c_master(i2c, 1, p_scl, p_sda, 10);   //server thread providing orientation data
-    orientation(i2c[0],c_control);        //client thread reading orientation data
-    DataInStream(infname, c_inIO);          //thread to read in a PGM image
-    DataOutStream(outfname, c_outIO);       //thread to write out a PGM image
-    distributor(c_inIO, c_outIO, c_control);//thread to coordinate work on image
+    i2c_master(i2c, 1, p_scl, p_sda, 10);  //server thread providing orientation data
+    orientation(i2c[0],cControl);        //client thread reading orientation data
+    DataInStream(infname, cInIO);          //thread to read in a PGM image
+    DataOutStream(outfname, cOutIO);       //thread to write out a PGM image
+    distributor(cInIO, cOutIO, cControl, cWorker);  //thread to coordinate work on image
+    worker(cWorker);
   }
 
   return 0;
