@@ -9,6 +9,7 @@
 
 #define  IMHT 16                  //image height
 #define  IMWD 16                  //image width
+#define  ALIVECELL 255
 
 typedef unsigned char uchar;      //using uchar as shorthand
 
@@ -50,7 +51,6 @@ void DataInStream(char infname[], chanend cOut)
     _readinline( line, IMWD );
     for( int x = 0; x < IMWD; x++ ) {
       cOut <: line[x];
-
       printf( "-%4.1d ", line[ x ] ); //show image values
     }
     printf( "\n" );
@@ -62,6 +62,36 @@ void DataInStream(char infname[], chanend cOut)
   return;
 }
 
+
+////////////////////////////////////////////////////////////////////////////////////////
+//
+// Functions to find neighbours and decide dead/alive
+//
+/////////////////////////////////////////////////////////////////////////////////////////
+
+int countNeighbours(uchar board[IMHT][IMWD], int x, int y){
+    int neighbourCount = 0;
+
+    for (int i = -1; i < 2; i ++){
+        for (int j = -1; j < 2; j ++){
+            if (!((i == 0) && (j == 0))){
+                if (board[(x + i + IMWD) % IMWD][(y + j + IMHT) % IMHT] == ALIVECELL){
+                    neighbourCount++;
+                }
+            }
+        }
+    }
+    //printf("neighbourCount: %d ", neighbourCount);
+    return neighbourCount;
+}
+
+int aliveOrDead(int neighbourCount, int currentCell){
+    if (neighbourCount < 2) return 0;
+    else if (neighbourCount == 2 || neighbourCount == 3) return ALIVECELL;
+    else if (neighbourCount > 3) return 0;
+    else if ((currentCell == 0) && (neighbourCount == 3)) return ALIVECELL;
+    else return currentCell;
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -85,6 +115,7 @@ uchar* alias ultimateUnpacker(int inputInt){
     for (int i = 0; i < 8; i++){
         dataArray[i] = inputInt & 1 << (shift - i);
     }
+    return dataArray;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -95,20 +126,23 @@ uchar* alias ultimateUnpacker(int inputInt){
 //
 /////////////////////////////////////////////////////////////////////////////////////////
 
-void distributor(chanend cIn, chanend cOut, chanend fromAcc, chanend cWorker)
+void distributor(chanend cIn, chanend cOut, chanend cControl, chanend cWorker)
 {
   uchar val;
+  uchar board[IMHT][IMWD];
 
   //Starting up and wait for tilting of the xCore-200 Explorer
   printf( "ProcessImage: Start, size = %dx%d\n", IMHT, IMWD );
   printf( "Waiting for Board Tilt...\n" );
-  fromAcc :> int value;
+  cControl :> int value;
 
-  //Read in val from data in and send to worker
+  //Read in val from data in and initialise board
   for( int y = 0; y < IMHT; y++ ) {   //go through all lines
       for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
         cIn :> val;                    //read the pixel value
-        cWorker <: val;                //send some modified pixel out
+        board[y][x] = val;
+        cWorker <: val;
+        cWorker :> val;
       }
     }
 
@@ -116,8 +150,17 @@ void distributor(chanend cIn, chanend cOut, chanend fromAcc, chanend cWorker)
   printf( "Processing...\n" );
   for( int y = 0; y < IMHT; y++ ) {   //go through all lines
     for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
-      cWorker :> val;                    //read the pixel value
-      cOut <: val; //send some modified pixel out
+
+        val = board[y][x];
+
+        //printf("VAL BEFORE: %d ", val);
+
+        cWorker <: val;                //send pixel to worker for updated pixel
+        cWorker :> val;                //get back manipulated pixel
+
+        //printf("VAL AFTER: %d ", val);
+
+        cOut <: val;                   //output manipulated pixel
     }
   }
   printf( "\nOne processing round completed...\n" );
@@ -131,12 +174,42 @@ void distributor(chanend cIn, chanend cOut, chanend fromAcc, chanend cWorker)
 /////////////////////////////////////////////////////////////////////////////////////////
 
 void worker(chanend cWorker){
+    unsigned char currentCell;
+    unsigned char updatedCell;
     unsigned int aliveNeighbours = 0;
     unsigned char board[IMHT][IMWD];
     unsigned char newBoard[IMHT][IMWD];
-    unsigned char currentCell, updatedCell;
 
+    //populate input board
+    for (int y = 0; y < IMHT; y++){
+        for (int x = 0; x < IMWD; x++){
+            cWorker :> currentCell;
+            board[y][x] = currentCell;
+            cWorker <: currentCell;
+        }
+    }
 
+    printf("here\n");
+
+    // get currentCell from distributor, manipulate and insert into newBoard
+    for (int y = 0; y < IMHT; y++){
+        for (int x = 0; x < IMWD; x++){
+            cWorker :> currentCell;
+            aliveNeighbours = countNeighbours(board, y, x);
+            printf("ALIVE NEIGHBOURS = %d", aliveNeighbours);
+            updatedCell = aliveOrDead(aliveNeighbours, currentCell);
+            newBoard[y][x] = updatedCell;
+            cWorker <: updatedCell;
+        }
+    }
+
+    // go through newBoard and send back to distributor
+    /*for (int y = 0; y < IMHT; y++){
+        for (int x = 0; x < IMWD; x++){
+            updatedCell = newBoard[y][x];
+            cWorker <: updatedCell;
+        }
+    }*/
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -161,6 +234,7 @@ void DataOutStream(char outfname[], chanend cIn)
   for( int y = 0; y < IMHT; y++ ) {
     for( int x = 0; x < IMWD; x++ ) {
       cIn :> line[ x ];
+      printf( "-%4.1d ", line[ x ] );
     }
     _writeoutline( line, IMWD );
     printf( "DataOutStream: Line written...\n" );
