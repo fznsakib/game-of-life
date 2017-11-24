@@ -204,9 +204,9 @@ int flip(int n) {
 void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cVisualiser, chanend cWorker1, chanend cWorker2, chanend cWorker3, chanend cWorker4, chanend cTilt, chanend cButton2)
 {
   uchar val = 0;
-  //int chanBuffer = 0;
-  //int paused = 0;
-  int exporting = 0;
+  int chanBuffer = 0;
+  int paused = 0;
+
   uchar board[IMHT][IMWD];
   uchar workerBoard1[WORKERHT][IMWD];
   uchar workerBoard2[WORKERHT][IMWD];
@@ -245,27 +245,28 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cVisualise
   while(round < MAX_ROUNDS){
       select{
           //wait for tilt to pause
-          /*case cTilt :> chanBuffer:
+          case cTilt :> chanBuffer:
+              printf("PAUSED\n\n\n");
               paused = 1;
-              printf("PAUSED\n");
-              //wait for board to go back to normal orientation
-              while (paused == 1){
-                  printstr("here 1\n");
-                  cTilt <: chanBuffer;
-                  printstr("here 2\n");
-                  cTilt :> chanBuffer;
-                  printstr("here 3 \n");
 
-                  if (chanBuffer < 30 && chanBuffer > 30) paused = 0;
-              }
+              //wait for board to go back to normal orientation
               cTilt <: chanBuffer;
-              printf("RESUMING...\n");
+              cTilt :> paused;
+
+              printf("RESUMING...\n\n\n");
               break;
-          */
+
           //wait for button 2 press to export
-          case cButton2 :> exporting:
+          case cButton2 :> chanBuffer:
               printf("EXPORTING\n");
-              //cButton2 <: exporting;
+              //output board to console if button 2 is pressed
+              for (int y = 0; y < IMHT; y++){
+                  for (int x = 0; x < IMWD; x++){
+                      val = board[y][x];
+                      cOut <: val;
+                  }
+              }
+              cButton2 <: chanBuffer;
               break;
 
           //Main distribution code
@@ -417,15 +418,6 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cVisualise
             round++;
             cVisualiser <: round;
 
-            //output final board to console if button 2 is pressed
-            /*for (int y = 0; y < IMHT; y++){
-                for (int x = 0; x < IMWD; x++){
-                    val = board[y][x];
-                    cOut <: val;
-                    //cOut :> val;
-                }
-            }*/
-
 
             printf("FINAL BOARD NO: %d\n", round);
             for (int y = 0; y < IMHT; y++){
@@ -530,7 +522,7 @@ void worker(int index, chanend cWorker){
             }
         }
 
-        //Neighbour count print
+        /*//Neighbour count print
         if (index == 2){
             printf("NEIGHBOUR COUNT\n");
             for (int y = 0; y < WORKERHT; y++){
@@ -539,7 +531,7 @@ void worker(int index, chanend cWorker){
                 }
                 printf("\n");
             }
-        }
+        }*/
 
         //use newBoard full of neighbourCounts to convert into updated cell status
 
@@ -571,10 +563,6 @@ void DataOutStream(char outfname[], chanend cIn, chanend toVisualiser)
   while(1){
   int res;
   uchar line[ IMWD ];
-  // Start export on press of button 2
-  //cButton2 :> int value;
-  // send 1 to export to turn on blue LED
-  toVisualiser <: 1;
 
 
   //Open PGM file
@@ -589,6 +577,8 @@ void DataOutStream(char outfname[], chanend cIn, chanend toVisualiser)
   for( int y = 0; y < IMHT; y++ ) {
     for( int x = 0; x < IMWD; x++ ) {
       cIn :> line[ x ];
+      // send 1 to export to turn on blue LED
+      toVisualiser <: 1;
       //cIn <: 0;
       printf( "-%4.1d ", line[ x ] );
     }
@@ -596,12 +586,13 @@ void DataOutStream(char outfname[], chanend cIn, chanend toVisualiser)
     printf( "DataOutStream: Line written...\n" );
   }
 
+  // send 0 back to export to turn off blue LED
+   toVisualiser <: 0;
+
   //Close the PGM image
   _closeoutpgm();
   printf( "DataOutStream: Done...\n" );
-  // send 0 back to export to turn off blue LED
-  toVisualiser <: 0;
-  return;
+
   }
 }
 
@@ -613,8 +604,9 @@ void DataOutStream(char outfname[], chanend cIn, chanend toVisualiser)
 void orientation( client interface i2c_master_if i2c, chanend toDist) {
   i2c_regop_res_t result;
   char status_data = 0;
-  int tilted = 0;
-  //int val = 0;
+  //int tilted = 0;
+  int val = 0;
+  int paused = 0;
 
 
   // Configure FXOS8700EQ
@@ -641,12 +633,17 @@ void orientation( client interface i2c_master_if i2c, chanend toDist) {
     int x = read_acceleration(i2c, FXOS8700EQ_OUT_X_MSB);
 
     //send signal to distributor after first tilt
-    if (!tilted) {
-      if (x>30) {
-        tilted = 1 - tilted;
-        toDist <: x;
+    if (x>50) {
+      toDist <: x;
+      toDist :> x;
+      paused = 1;
+      while (paused == 1){
+          x = read_acceleration(i2c, FXOS8700EQ_OUT_X_MSB);
+          if ((x > -50) && (x < 50)) paused = 0;
+      }
+
+      toDist <: paused;
     }
-  }
   }
 }
 
@@ -674,7 +671,6 @@ par {
     on tile[1]: worker(1, cWorker[1]);
     on tile[1]: worker(2, cWorker[2]);
     on tile[1]: worker(3, cWorker[3]);
-    //on tile[0]: inputChecker(cControl, cButton[1]);
     on tile[0]: buttonListener(buttons, cButton[0], cButton[1]);
     on tile[0]: showLEDs(leds, cLEDs);
     on tile[0]: visualiser(cLEDs, cDistributorToVisualiser, cDataOutToVisualiser);
