@@ -182,30 +182,48 @@
   <inPar/>
 </task>
 <task>
-  <name>_task_buttonListener_7</name>
+  <name>_task_worker_7</name>
   <inFunction>main</inFunction>
   <parent>main</parent>
-  <calledFunction>buttonListener</calledFunction>
-  <tile>tile[0]</tile>
+  <calledFunction>worker</calledFunction>
+  <tile>tile[1]</tile>
   <core>8</core>
   <inPar/>
 </task>
 <task>
-  <name>_task_showLEDs_8</name>
+  <name>_task_worker_8</name>
   <inFunction>main</inFunction>
   <parent>main</parent>
-  <calledFunction>showLEDs</calledFunction>
-  <tile>tile[0]</tile>
+  <calledFunction>worker</calledFunction>
+  <tile>tile[1]</tile>
   <core>9</core>
   <inPar/>
 </task>
 <task>
-  <name>_task_visualiser_9</name>
+  <name>_task_buttonListener_9</name>
+  <inFunction>main</inFunction>
+  <parent>main</parent>
+  <calledFunction>buttonListener</calledFunction>
+  <tile>tile[0]</tile>
+  <core>10</core>
+  <inPar/>
+</task>
+<task>
+  <name>_task_showLEDs_10</name>
+  <inFunction>main</inFunction>
+  <parent>main</parent>
+  <calledFunction>showLEDs</calledFunction>
+  <tile>tile[0]</tile>
+  <core>11</core>
+  <inPar/>
+</task>
+<task>
+  <name>_task_visualiser_11</name>
   <inFunction>main</inFunction>
   <parent>main</parent>
   <calledFunction>visualiser</calledFunction>
   <tile>tile[0]</tile>
-  <core>10</core>
+  <core>12</core>
   <inPar/>
 </task>
 <connection>
@@ -241,14 +259,14 @@
 <connection>
   <ends>
     <end task="_task_DataOutStream_3" type="chan"/>
-    <end task="_task_visualiser_9" type="chan"/>
+    <end task="_task_visualiser_11" type="chan"/>
   </ends>
   <name>cDataOutToVisualiser</name>
 </connection>
 <connection>
   <ends>
     <end task="_task_distributor_4" type="chan"/>
-    <end task="_task_buttonListener_7" type="chan"/>
+    <end task="_task_buttonListener_9" type="chan"/>
   </ends>
     <index>0</index>
   <name>cButton</name>
@@ -256,7 +274,7 @@
 <connection>
   <ends>
     <end task="_task_distributor_4" type="chan"/>
-    <end task="_task_buttonListener_7" type="chan"/>
+    <end task="_task_buttonListener_9" type="chan"/>
   </ends>
     <index>1</index>
   <name>cButton</name>
@@ -264,7 +282,7 @@
 <connection>
   <ends>
     <end task="_task_distributor_4" type="chan"/>
-    <end task="_task_visualiser_9" type="chan"/>
+    <end task="_task_visualiser_11" type="chan"/>
   </ends>
   <name>cDistributorToVisualiser</name>
 </connection>
@@ -286,8 +304,24 @@
 </connection>
 <connection>
   <ends>
-    <end task="_task_showLEDs_8" type="chan"/>
-    <end task="_task_visualiser_9" type="chan"/>
+    <end task="_task_distributor_4" type="chan"/>
+    <end task="_task_worker_7" type="chan"/>
+  </ends>
+    <index>2</index>
+  <name>cWorker</name>
+</connection>
+<connection>
+  <ends>
+    <end task="_task_distributor_4" type="chan"/>
+    <end task="_task_worker_8" type="chan"/>
+  </ends>
+    <index>3</index>
+  <name>cWorker</name>
+</connection>
+<connection>
+  <ends>
+    <end task="_task_showLEDs_10" type="chan"/>
+    <end task="_task_visualiser_11" type="chan"/>
   </ends>
   <name>cLEDs</name>
 </connection>
