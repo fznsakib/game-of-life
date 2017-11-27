@@ -148,7 +148,7 @@ void buttonListener(in port b, chanend cButton1, chanend cButton2) {
   }
 }
 
-void visualiser(chanend toLEDs, chanend fromDistributor, chanend fromDataOut) {
+void visualiser(chanend toLEDs, chanend fromDistributorRounds, chanend fromDistributorPaused, chanend fromDataOut) {
   int pattern = 0;
   int round = 0;            //alternate between green and flashing green
   int exporting = 0;
@@ -156,7 +156,9 @@ void visualiser(chanend toLEDs, chanend fromDistributor, chanend fromDataOut) {
 
   while (1) {
     select{
-        case fromDistributor :> round:
+        case fromDistributorRounds :> round:
+            break;
+        case fromDistributorPaused :> paused:
             break;
         case fromDataOut :> exporting:
             break;
@@ -168,24 +170,63 @@ void visualiser(chanend toLEDs, chanend fromDistributor, chanend fromDataOut) {
   }
 }
 
-void inputChecker(chanend cTilt, chanend cButton2){
-    int paused = 0;
-    int exporting = 0;
-    while (1){
+//void timerFunction(chanend toDistributor){
+//    timer t;
+//    int timerOn = 0;
+//    uint32_t startTime, endTime, roundTime;
+//    int totalElapsedTime = 0;
+//    const unsigned int period = 100000000;
+//
+//    while(1){
+//        select{
+//            case toDistributor :> timerOn:
+//                if (timerOn == 1) t :> startTime;
+//                else if (timerOn == 0) {
+//                    t :> endTime;
+//                    roundTime = endTime - startTime;
+//                    totalElapsedTime = totalElapsedTime + roundTime;
+//                }
+//                else if (timerOn == 2){
+//                    toDistributor <: totalElapsedTime;
+//                }
+//                else if (timerOn == 3){
+//                    toDistributor <: roundTime;
+//                }
+//                break;
+//        }
+//    }
+//}
+
+void timerFunction(chanend toDistributor){
+    timer t;
+    int timerOn = 0;
+    uint32_t startTime, endTime, initialValue;
+    float roundTime;
+    float totalElapsedTime = 0;
+    float period = 100000000;
+
+    while(1){
         select{
-            case cTilt :> paused:
-                printf("PAUSED\n");
-                cTilt :> paused;
-                break;
-            case cButton2 :> exporting:
-                printf("EXPORTING\n");
-                cButton2 <: exporting;
+            case t when timerafter(100000000) :> void:
+                if (startTime < endTime){
+
+                }
                 break;
         }
+        toDistributor :> timerOn;
+        if (timerOn == 3){
+            toDistributor <: totalElapsedTime;
+        }
+        else{
+            t :> startTime;
+            toDistributor :> timerOn;
+            t :> endTime;
+            roundTime = (endTime - startTime)/period;
+            toDistributor <: roundTime;
+            totalElapsedTime = totalElapsedTime + roundTime;
+        }
     }
-
 }
-
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -201,11 +242,14 @@ int flip(int n) {
 }
 
 
-void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cVisualiser, chanend cWorker1, chanend cWorker2, chanend cWorker3, chanend cWorker4, chanend cTilt, chanend cButton2)
+void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, chanend cVisualiserRounds, chanend cVisualiserPaused, chanend cWorker1, chanend cWorker2, chanend cWorker3, chanend cWorker4, chanend cTilt, chanend cTimer)
 {
   uchar val = 0;
   int chanBuffer = 0;
   int paused = 0;
+  int aliveCells = 0;
+  float roundTime = 0;
+  float totalTime = 0;
 
   uchar board[IMHT][IMWD];
   uchar workerBoard1[WORKERHT][IMWD];
@@ -213,14 +257,13 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cVisualise
   uchar workerBoard3[WORKERHT][IMWD];
   uchar workerBoard4[WORKERHT][IMWD];
   int round = 0;
-  //int readyToExport = 0;
 
 
   //Starting up and wait for tilting of the xCore-200 Explorer
   printf( "ProcessImage: Start, size = %dx%d\n", IMHT, IMWD );
-  printf( "Waiting for Button 1...\n" );
+  printf( "Press Button 1 to begin...\n" );
   cButton1 :> int value;
-  cVisualiser <: 1;
+  cVisualiserRounds <: 1;
 
   //Read in val from data in and initialise board
   for( int y = 0; y < IMHT; y++ ) {   //go through all lines
@@ -228,6 +271,7 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cVisualise
 
           cIn :> val;                    //read the pixel value
           board[y][x] = val;             //initialise board with values
+          if (val == 255) aliveCells++;  //count number of alive cells for status report
       }
   }
 
@@ -246,19 +290,28 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cVisualise
       select{
           //wait for tilt to pause
           case cTilt :> chanBuffer:
-              printf("PAUSED\n\n\n");
+              cTimer <: 3;
+              cTimer :> totalTime;
+              cVisualiserPaused <: 1;
+              printf("-------------- PAUSED --------------\n\n");
+
+              printf("STATUS REPORT: \n");
+              printf("Number of rounds processsed: %d\n", round);
+              printf("Number of alive cells in current configuration: %d\n", aliveCells);
+              printf("Processing time elapsed since start of simulation: %fs\n\n", totalTime);
               paused = 1;
 
               //wait for board to go back to normal orientation
               cTilt <: chanBuffer;
               cTilt :> paused;
-
-              printf("RESUMING...\n\n\n");
+              cVisualiserPaused <: 0;
+              printf("------------- RESUMING -------------\n\n\n");
               break;
 
           //wait for button 2 press to export
           case cButton2 :> chanBuffer:
-              printf("EXPORTING\n");
+              cOut <: val;
+              printf("Begin exporting...\n");
               //output board to console if button 2 is pressed
               for (int y = 0; y < IMHT; y++){
                   for (int x = 0; x < IMWD; x++){
@@ -271,6 +324,9 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cVisualise
 
           //Main distribution code
           default:
+
+            //Start timer
+            cTimer <: 1;
 
             //Initialise workerBoard insides
             for( int y = 0; y < WORKERHT - 2; y++ ) {   //initialise workerBoard 1
@@ -296,7 +352,7 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cVisualise
             for (int i = 0; i < 2; i ++){
                 for (int x = 0; x < IMWD; x++){
                     if (i == 0){
-                        workerBoard1[0][x] = board[0][x];
+                        workerBoard1[0][x] = board[IMHT - 1][x];
                         workerBoard2[0][x] = board[(IMHT/4) - 1][x];
                         workerBoard3[0][x] = board[(IMHT/2) - 1][x];
                         workerBoard4[0][x] = board[((3*IMHT)/4) - 1][x];
@@ -416,18 +472,40 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cVisualise
             }
 
             round++;
-            cVisualiser <: round;
+            cVisualiserRounds <: round;
+            cTimer <: 1;
+            cTimer :> roundTime;
 
-
-            printf("FINAL BOARD NO: %d\n", round);
+            /*printf("FINAL BOARD NO: %d\n", round);
             for (int y = 0; y < IMHT; y++){
                   for (int x = 0; x < IMWD; x++){
                       printf("%4.1d ", board[y][x]);
                   }
                   printf("\n");
-            }
+            }*/
+
 
             printf( "\nProcessing round %d completed...\n", round);
+            printf("Elapsed round time: %fs\n", roundTime);
+
+            //final export on round 100
+            if (round == 100){
+                printf("Begin exporting...\n");
+                cOut <: val;
+                for (int y = 0; y < IMHT; y++){
+                    for (int x = 0; x < IMWD; x++){
+                        val = board[y][x];
+                        cOut <: val;
+                    }
+                }
+            cTimer <: 3;
+            cTimer :> totalTime;
+            printf("FINAL STATUS REPORT: \n");
+            printf("Number of rounds processsed: %d\n", round);
+            printf("Number of alive cells in current configuration: %d\n", aliveCells);
+            printf("Processing time elapsed since start of simulation: %fs\n\n", totalTime);
+            cButton2 <: chanBuffer;
+            }
             break;
             }
       }
@@ -467,7 +545,7 @@ int aliveOrDead(int neighbourCount, int currentCell){
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //
-// Worker functions being fed from distributor, each worker is working on a different
+// Worker function being fed from distributor, each worker is working on a different
 // part of the image
 //
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -561,38 +639,43 @@ void worker(int index, chanend cWorker){
 void DataOutStream(char outfname[], chanend cIn, chanend toVisualiser)
 {
   while(1){
-  int res;
-  uchar line[ IMWD ];
+      uchar val;
+      int res;
+      uchar line[ IMWD ];
+
+      cIn :> val;
 
 
-  //Open PGM file
-  printf( "DataOutStream: Start...\n" );
-  res = _openoutpgm( outfname, IMWD, IMHT );
-  if( res ) {
-    printf( "DataOutStream: Error opening %s\n.", outfname );
-    return;
-  }
+      //Open PGM file
+      printf( "DataOutStream: Start...\n" );
+      res = _openoutpgm( outfname, IMWD, IMHT );
+      if( res ) {
+        printf( "DataOutStream: Error opening %s\n.", outfname );
+        return;
+      }
 
-  //Compile each line of the image and write the image line-by-line
-  for( int y = 0; y < IMHT; y++ ) {
-    for( int x = 0; x < IMWD; x++ ) {
-      cIn :> line[ x ];
       // send 1 to export to turn on blue LED
       toVisualiser <: 1;
-      //cIn <: 0;
-      printf( "-%4.1d ", line[ x ] );
-    }
-    _writeoutline( line, IMWD );
-    printf( "DataOutStream: Line written...\n" );
-  }
 
-  // send 0 back to export to turn off blue LED
-   toVisualiser <: 0;
+      //Compile each line of the image and write the image line-by-line
+      for( int y = 0; y < IMHT; y++ ) {
+        for( int x = 0; x < IMWD; x++ ) {
+          cIn :> line[ x ];
 
-  //Close the PGM image
-  _closeoutpgm();
-  printf( "DataOutStream: Done...\n" );
+          printf( "-%4.1d ", line[ x ] );
+        }
+        _writeoutline( line, IMWD );
+        printf( "DataOutStream: Line written...\n" );
+      }
 
+      // send 0 back to export to turn off blue LED
+       toVisualiser <: 0;
+
+      //Close the PGM image
+      _closeoutpgm();
+      printf( "DataOutStream: Done...\n" );
+
+      printf("------- Export COMPLETE -------\n");
   }
 }
 
@@ -605,7 +688,6 @@ void orientation( client interface i2c_master_if i2c, chanend toDist) {
   i2c_regop_res_t result;
   char status_data = 0;
   //int tilted = 0;
-  int val = 0;
   int paused = 0;
 
 
@@ -657,23 +739,24 @@ int main(void) {
 
 i2c_master_if i2c[1];               //interface to orientation
 
-chan cInIO, cOutIO, cControl, cLEDs;    //extend your channel definitions here
-chan cWorker[4], cButton[2];
-chan cDistributorToVisualiser, cDataOutToVisualiser;
+chan cInIO, cOutIO, cControl, cLEDs, cTimer;    //extend your channel definitions here
+chan cWorker[4], cButton[2], cVisualiser[3];
 
 par {
     on tile[0]: i2c_master(i2c, 1, p_scl, p_sda, 10);  //server thread providing orientation data
     on tile[0]: orientation(i2c[0],cControl);        //client thread reading orientation data
     on tile[1]: DataInStream(infname, cInIO);          //thread to read in a PGM image
-    on tile[1]: DataOutStream(outfname, cOutIO, cDataOutToVisualiser);       //thread to write out a PGM image
-    on tile[1]: distributor(cInIO, cOutIO, cButton[0], cDistributorToVisualiser, cWorker[0], cWorker[1], cWorker[2], cWorker[3], cControl, cButton[1]);  //thread to coordinate work on image
+    on tile[1]: DataOutStream(outfname, cOutIO, cVisualiser[2]);       //thread to write out a PGM image
+    on tile[1]: distributor(cInIO, cOutIO, cButton[0], cButton[1], cVisualiser[0], cVisualiser[1], cWorker[0], cWorker[1], cWorker[2], cWorker[3], cControl, cTimer);  //thread to coordinate work on image
     on tile[1]: worker(0, cWorker[0]);
     on tile[1]: worker(1, cWorker[1]);
     on tile[1]: worker(2, cWorker[2]);
     on tile[1]: worker(3, cWorker[3]);
     on tile[0]: buttonListener(buttons, cButton[0], cButton[1]);
     on tile[0]: showLEDs(leds, cLEDs);
-    on tile[0]: visualiser(cLEDs, cDistributorToVisualiser, cDataOutToVisualiser);
+    on tile[0]: visualiser(cLEDs, cVisualiser[0], cVisualiser[1], cVisualiser[2]);
+    on tile[0]: timerFunction(cTimer);
+    //for (int i = 0; i < 4; i++) on tile[1]: worker(i, cWorker[i]);
   }
 
   return 0;

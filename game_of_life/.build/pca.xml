@@ -492,7 +492,7 @@
     </values>
   </arg>
 </fInfo>
-<fInfo name="distributor" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="10">
+<fInfo name="distributor" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="12">
   <arg num="0" specialize="false">
     <values>
       <value type="unknown"/>
@@ -539,6 +539,16 @@
     </values>
   </arg>
   <arg num="9" specialize="false">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+  <arg num="10" specialize="false">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+  <arg num="11" specialize="false">
     <values>
       <value type="unknown"/>
     </values>
@@ -727,16 +737,6 @@
     </values>
   </arg>
   <arg num="3" specialize="false">
-    <values>
-    </values>
-  </arg>
-</fInfo>
-<fInfo name="inputChecker" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="2">
-  <arg num="0" specialize="false">
-    <values>
-    </values>
-  </arg>
-  <arg num="1" specialize="false">
     <values>
     </values>
   </arg>
@@ -933,7 +933,14 @@
 </fInfo>
 <fInfo name="stop_bit" global="true" interface="i2c_slave_callback_if" specialize="false" noreturn="false" doNotSpecialize="false" numParams="0">
 </fInfo>
-<fInfo name="visualiser" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="3">
+<fInfo name="timerFunction" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="1">
+  <arg num="0" specialize="false">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+</fInfo>
+<fInfo name="visualiser" global="true" specialize="false" noreturn="true" doNotSpecialize="false" numParams="4">
   <arg num="0" specialize="false">
     <values>
       <value type="unknown"/>
@@ -945,6 +952,11 @@
     </values>
   </arg>
   <arg num="2" specialize="false">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+  <arg num="3" specialize="false">
     <values>
       <value type="unknown"/>
     </values>
