@@ -8,11 +8,11 @@
 #include <print.h>
 #include "i2c.h"
 
-#define  IMHT 16                  //image height
-#define  IMWD 16                  //image width
+#define  IMHT 64                  //image height
+#define  IMWD 64                  //image width
 #define  ALIVECELL 255            //alive cell byte
 #define  MAX_ROUNDS 100           //maximum rounds to be executed
-#define  WORKERHT 6
+#define  WORKERHT 10
 
 typedef unsigned char uchar;      //using uchar as shorthand
 
@@ -33,7 +33,7 @@ on tile[0] : out port leds = XS1_PORT_4F;   //port to access xCore-200 LEDs
 #define FXOS8700EQ_OUT_Z_MSB 0x5
 #define FXOS8700EQ_OUT_Z_LSB 0x6
 
-char infname[] = "test.pgm";     //put your input image path here
+char infname[] = "64x64.pgm";     //put your input image path here
 char outfname[] = "testout.pgm"; //put your output image path here
 
 
@@ -64,9 +64,9 @@ void DataInStream(char infname[], chanend cOut)
     for( int x = 0; x < IMWD; x++ ) {
       //printf("HERE: %d ", line[x]);
       cOut <: line[x];
-      printf( "-%4.1d ", line[ x ] ); //show image values
+      //printf( "-%4.1d ", line[ x ] ); //show image values
     }
-    printf( "\n" );
+    //printf( "\n" );
   }
 
   //Close PGM image file
@@ -242,7 +242,7 @@ int flip(int n) {
 }
 
 
-void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, chanend cVisualiserRounds, chanend cVisualiserPaused, chanend cWorker1, chanend cWorker2, chanend cWorker3, chanend cWorker4, chanend cTilt, chanend cTimer)
+void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, chanend cVisualiserRounds, chanend cVisualiserPaused, chanend cWorker[8], chanend cTilt, chanend cTimer)
 {
   uchar val = 0;
   int chanBuffer = 0;
@@ -252,10 +252,12 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
   float totalTime = 0;
 
   uchar board[IMHT][IMWD];
-  uchar workerBoard1[WORKERHT][IMWD];
+  /*uchar workerBoard1[WORKERHT][IMWD];
   uchar workerBoard2[WORKERHT][IMWD];
   uchar workerBoard3[WORKERHT][IMWD];
-  uchar workerBoard4[WORKERHT][IMWD];
+  uchar workerBoard4[WORKERHT][IMWD];*/
+  uchar workerBoard[8][WORKERHT][IMWD];
+
   int round = 0;
 
 
@@ -276,13 +278,12 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
   }
 
   //initialise workerBoards
-  for( int y = 0; y < WORKERHT; y++ ) {   //initialise workerBoard 1
+  for (int i = 0; i < 8 ; i++){
+    for( int y = 0; y < WORKERHT; y++ ) {   //initialise workerBoard 1
       for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
-          workerBoard1[y][x] = 0;
-          workerBoard2[y][x] = 0;
-          workerBoard3[y][x] = 0;
-          workerBoard3[y][x] = 0;
+          workerBoard[i][y][x] = 0;
       }
+    }
   }
 
   //BEGIN WHILE LOOP
@@ -329,15 +330,16 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
             cTimer <: 1;
 
             //Initialise workerBoard insides
-            for( int y = 0; y < WORKERHT - 2; y++ ) {   //initialise workerBoard 1
-              for( int x = 0; x < IMWD; x++ ) {     //go through each pixel per line
-                workerBoard1[y + 1][x] = board[y][x];
-                workerBoard2[y + 1][x] = board[(y + (IMHT / 4))][x];
-                workerBoard3[y + 1][x] = board[(y + (IMHT / 2))][x];
-                //int i = y + ((3*IMHT)/ 4) - 1;
-                //printf("%d \n", i);
-                workerBoard4[y + 1][x] = board[(y + ((3*IMHT) / 4))][x];
-              }
+            for (int i = 0; i < 8; i++){
+                for( int y = 0; y < WORKERHT - 2; y++ ) {   //initialise workerBoard 1
+                  for( int x = 0; x < IMWD; x++ ) {     //go through each pixel per line
+                    //printf("%d\n", i);
+                    workerBoard[i][y + 1][x] = board[y + (i * (IMHT/8))][x];
+                    /*workerBoard2[y + 1][x] = board[(y + (IMHT / 4))][x];
+                    workerBoard3[y + 1][x] = board[(y + (IMHT / 2))][x];
+                    workerBoard4[y + 1][x] = board[(y + ((3*IMHT) / 4))][x];*/
+                  }
+                }
             }
 
             //Initialise workerBoard top/bottom
@@ -349,19 +351,25 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
             }*/
 
             //Initialise workerBoard top/bottom
-            for (int i = 0; i < 2; i ++){
-                for (int x = 0; x < IMWD; x++){
-                    if (i == 0){
-                        workerBoard1[0][x] = board[IMHT - 1][x];
-                        workerBoard2[0][x] = board[(IMHT/4) - 1][x];
-                        workerBoard3[0][x] = board[(IMHT/2) - 1][x];
-                        workerBoard4[0][x] = board[((3*IMHT)/4) - 1][x];
-                    }
-                    else{
-                        workerBoard1[WORKERHT - 1][x] = board[(IMHT/4)][x];
-                        workerBoard2[WORKERHT - 1][x] = board[IMHT/2][x];
-                        workerBoard3[WORKERHT - 1][x] = board[((3*IMHT)/4)][x];
-                        workerBoard4[WORKERHT - 1][x] = board[0][x];
+            for (int h = 0; h < 8; h ++){
+                for (int i = 0; i < 2; i ++){
+                    for (int x = 0; x < IMWD; x++){
+                        if (i == 0){
+                            if (h == 0) workerBoard[h][0][x] = board[IMHT - 1][x];
+                            else workerBoard[h][0][x] = board[((h*IMHT)/8) - 1][x];
+                            /*workerBoard1[0][x] = board[IMHT - 1][x];
+                            workerBoard2[0][x] = board[(IMHT/4) - 1][x];
+                            workerBoard3[0][x] = board[(IMHT/2) - 1][x];
+                            workerBoard4[0][x] = board[((3*IMHT)/4) - 1][x];*/
+                        }
+                        else{
+                            if (h == 7) workerBoard[h][WORKERHT - 1][x] = board[0][x];
+                            else workerBoard[h][WORKERHT - 1][x] = board[((h*IMHT) + 1)/8][x];
+                            /*workerBoard1[WORKERHT - 1][x] = board[(IMHT/4)][x];
+                            workerBoard2[WORKERHT - 1][x] = board[IMHT/2][x];
+                            workerBoard3[WORKERHT - 1][x] = board[((3*IMHT)/4)][x];
+                            workerBoard4[WORKERHT - 1][x] = board[0][x];*/
+                        }
                     }
                 }
             }
@@ -405,27 +413,32 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
 
 
             // Initiate board in worker functions
-            for( int y = 0; y < WORKERHT; y++ ) {   //go through all lines
-                for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
-                  cWorker1 <: workerBoard1[y][x];
-                  cWorker1 :> val;
+            for (int i = 0; i < 8; i++){
+                for( int y = 0; y < WORKERHT; y++ ) {   //go through all lines
+                    for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
+                      /*cWorker[0] <: workerBoard1[y][x];
+                      cWorker[0] :> val;
 
-                  cWorker2 <: workerBoard2[y][x];
-                  cWorker2 :> val;
+                      cWorker[1] <: workerBoard2[y][x];
+                      cWorker[1] :> val;
 
-                  cWorker3 <: workerBoard3[y][x];
-                  cWorker3 :> val;
+                      cWorker[2] <: workerBoard3[y][x];
+                      cWorker[2] :> val;
 
-                  cWorker4 <: workerBoard4[y][x];
-                  cWorker4 :> val;
+                      cWorker[3] <: workerBoard4[y][x];
+                      cWorker[3] :> val;*/
+
+                      cWorker[i] <: workerBoard[i][y][x];
+                      cWorker[i] :> val;
+                    }
                 }
             }
 
             // send work to each worker
             for( int worker1y = 0; worker1y < WORKERHT; worker1y++ ) {   //go through all lines
                 for( int worker1x = 0; worker1x < IMWD; worker1x++ ) {
-                    cWorker1 <: val;                      //send permission to worker to update cell
-                    cWorker1 :> val;                      //receive updated cell
+                    cWorker[0] <: val;                      //send permission to worker to update cell
+                    cWorker[0] :> val;                      //receive updated cell
 
                     //ignoring extra rows from worker board
                     if ((worker1y != 0 && worker1y != (WORKERHT-1))){
@@ -436,12 +449,12 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
 
             for( int worker2y = 0; worker2y < WORKERHT; worker2y++ ) {   //go through all lines
                 for( int worker2x = 0; worker2x < IMWD; worker2x++ ) {
-                    cWorker2 <: val;                //send permission to worker to update cell
-                    cWorker2 :> val;                //receive updated cell
+                    cWorker[1] <: val;                //send permission to worker to update cell
+                    cWorker[1] :> val;                //receive updated cell
 
                     if ((worker2y != 0 && worker2y != (WORKERHT-1))){
                         //board[worker2y + (WORKERHT - 3)][worker2x] = val;
-                        board[worker2y + ((IMHT/4) - 1)][worker2x] = val;
+                        board[worker2y + ((IMHT/8) - 1)][worker2x] = val;
 
                     }
                 }
@@ -449,11 +462,11 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
 
             for( int worker3y = 0; worker3y < WORKERHT; worker3y++ ) {   //go through all lines
                 for( int worker3x = 0; worker3x < IMWD; worker3x++ ) {
-                    cWorker3 <: val;                //send permission to worker to update cell
-                    cWorker3 :> val;                //receive updated cell
+                    cWorker[2] <: val;                //send permission to worker to update cell
+                    cWorker[2] :> val;                //receive updated cell
 
                     if ((worker3y != 0 && worker3y != (WORKERHT-1))){
-                        board[worker3y + ((IMHT/2) - 1)][worker3x] = val;
+                        board[worker3y + ((IMHT/4) - 1)][worker3x] = val;
 
                     }
                 }
@@ -461,11 +474,61 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
 
             for( int worker4y = 0; worker4y < WORKERHT; worker4y++ ) {   //go through all lines
                 for( int worker4x = 0; worker4x < IMWD; worker4x++ ) {
-                    cWorker4 <: val;                //send permission to worker to update cell
-                    cWorker4 :> val;                //receive updated cell
+                    cWorker[3] <: val;                //send permission to worker to update cell
+                    cWorker[3] :> val;                //receive updated cell
 
                     if ((worker4y != 0 && worker4y != (WORKERHT-1))){
-                        board[worker4y + ((3*(IMHT/4)) - 1)][worker4x] = val;
+                        board[worker4y + ((3*(IMHT/8)) - 1)][worker4x] = val;
+
+                    }
+                }
+            }
+
+            for( int worker5y = 0; worker5y < WORKERHT; worker5y++ ) {   //go through all lines
+                for( int worker5x = 0; worker5x < IMWD; worker5x++ ) {
+                    cWorker[4] <: val;                //send permission to worker to update cell
+                    cWorker[4] :> val;                //receive updated cell
+
+                    if ((worker5y != 0 && worker5y != (WORKERHT-1))){
+                        board[worker5y + (((IMHT/2)) - 1)][worker5x] = val;
+
+                    }
+                }
+            }
+
+            for( int worker6y = 0; worker6y < WORKERHT; worker6y++ ) {   //go through all lines
+                for( int worker6x = 0; worker6x < IMWD; worker6x++ ) {
+                    cWorker[5] <: val;                //send permission to worker to update cell
+                    cWorker[5] :> val;                //receive updated cell
+
+                    if ((worker6y != 0 && worker6y != (WORKERHT-1))){
+                        board[worker6y + ((5*(IMHT/8)) - 1)][worker6x] = val;
+
+                    }
+                }
+            }
+
+
+            for( int worker7y = 0; worker7y < WORKERHT; worker7y++ ) {   //go through all lines
+                for( int worker7x = 0; worker7x < IMWD; worker7x++ ) {
+                    cWorker[6] <: val;                //send permission to worker to update cell
+                    cWorker[6] :> val;                //receive updated cell
+
+                    if ((worker7y != 0 && worker7y != (WORKERHT-1))){
+                        board[worker7y + ((3*(IMHT/4)) - 1)][worker7x] = val;
+
+                    }
+                }
+            }
+
+
+            for( int worker8y = 0; worker8y < WORKERHT; worker8y++ ) {   //go through all lines
+                for( int worker8x = 0; worker8x < IMWD; worker8x++ ) {
+                    cWorker[7] <: val;                //send permission to worker to update cell
+                    cWorker[7] :> val;                //receive updated cell
+
+                    if ((worker8y != 0 && worker8y != (WORKERHT-1))){
+                        board[worker8y + ((7*(IMHT/8)) - 1)][worker8x] = val;
 
                     }
                 }
@@ -498,13 +561,13 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
                         cOut <: val;
                     }
                 }
-            cTimer <: 3;
-            cTimer :> totalTime;
-            printf("FINAL STATUS REPORT: \n");
-            printf("Number of rounds processsed: %d\n", round);
-            printf("Number of alive cells in current configuration: %d\n", aliveCells);
-            printf("Processing time elapsed since start of simulation: %fs\n\n", totalTime);
-            cButton2 <: chanBuffer;
+                cTimer <: 3;
+                cTimer :> totalTime;
+                printf("FINAL STATUS REPORT: \n");
+                printf("Number of rounds processsed: %d\n", round);
+                printf("Number of alive cells in current configuration: %d\n", aliveCells);
+                printf("Processing time elapsed since start of simulation: %fs\n\n", totalTime);
+                cButton2 <: chanBuffer;
             }
             break;
             }
@@ -662,10 +725,10 @@ void DataOutStream(char outfname[], chanend cIn, chanend toVisualiser)
         for( int x = 0; x < IMWD; x++ ) {
           cIn :> line[ x ];
 
-          printf( "-%4.1d ", line[ x ] );
+          //printf( "-%4.1d ", line[ x ] );
         }
         _writeoutline( line, IMWD );
-        printf( "DataOutStream: Line written...\n" );
+        //printf( "DataOutStream: Line written...\n" );
       }
 
       // send 0 back to export to turn off blue LED
@@ -740,23 +803,29 @@ int main(void) {
 i2c_master_if i2c[1];               //interface to orientation
 
 chan cInIO, cOutIO, cControl, cLEDs, cTimer;    //extend your channel definitions here
-chan cWorker[4], cButton[2], cVisualiser[3];
+chan cWorker[8], cButton[2], cVisualiser[3];
 
 par {
     on tile[0]: i2c_master(i2c, 1, p_scl, p_sda, 10);  //server thread providing orientation data
     on tile[0]: orientation(i2c[0],cControl);        //client thread reading orientation data
     on tile[1]: DataInStream(infname, cInIO);          //thread to read in a PGM image
     on tile[1]: DataOutStream(outfname, cOutIO, cVisualiser[2]);       //thread to write out a PGM image
-    on tile[1]: distributor(cInIO, cOutIO, cButton[0], cButton[1], cVisualiser[0], cVisualiser[1], cWorker[0], cWorker[1], cWorker[2], cWorker[3], cControl, cTimer);  //thread to coordinate work on image
+    on tile[1]: distributor(cInIO, cOutIO, cButton[0], cButton[1], cVisualiser[0], cVisualiser[1], cWorker, cControl, cTimer);  //thread to coordinate work on image
     on tile[1]: worker(0, cWorker[0]);
     on tile[1]: worker(1, cWorker[1]);
     on tile[1]: worker(2, cWorker[2]);
     on tile[1]: worker(3, cWorker[3]);
+    on tile[0]: worker(4, cWorker[4]);
+    on tile[0]: worker(5, cWorker[5]);
+    on tile[0]: worker(6, cWorker[6]);
+    on tile[0]: worker(7, cWorker[7]);
     on tile[0]: buttonListener(buttons, cButton[0], cButton[1]);
     on tile[0]: showLEDs(leds, cLEDs);
     on tile[0]: visualiser(cLEDs, cVisualiser[0], cVisualiser[1], cVisualiser[2]);
-    on tile[0]: timerFunction(cTimer);
-    //for (int i = 0; i < 4; i++) on tile[1]: worker(i, cWorker[i]);
+    on tile[1]: timerFunction(cTimer);
+//    par (int i = 0; i < 4; i++){
+//        on tile[]: worker(i, cWorker[i]);
+//    }
   }
 
   return 0;
