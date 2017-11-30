@@ -8,18 +8,30 @@
 #include <print.h>
 #include "i2c.h"
 
-#define  IMHT 1024                  //image height
-#define  IMWD 1024                  //image width
-#define  ALIVECELL 255              //alive cell byte
-#define  MAX_ROUNDS 100             //maximum rounds to be executed
-#define  WORKERHT ((IMHT / 8) + 2)
-#if (IMWD >= 32)
+#define  IMHT 512                  //image height
+#define  IMWD 512                 //image width
+
+#if (IMWD >= 32)                  //deciding type of int to use depending on image size
     #define b_int uint32_t
     #define INTSIZE 32
 #elif (IMWD >= 16)
     #define b_int uint16_t
     #define INTSIZE 16
 #endif
+
+#if (IMWD > 512)
+    #define WORKERNO 4
+#elif (IMWD >= 16)
+    #define WORKERNO 8
+#endif
+
+//#define  WORKERNO 8                        //number of workers
+#define  WORKERHT ((IMHT / WORKERNO) + 2)  //height of worker boards depending on number of workers
+#define  WORKERWD (IMWD / INTSIZE)         //width of worker boards depending on number of workers
+
+#define  ALIVECELL 255              //alive cell byte
+#define  MAX_ROUNDS 100             //maximum rounds to be executed
+
 
 typedef unsigned char uchar;      //using uchar as shorthand
 
@@ -40,7 +52,7 @@ on tile[0] : out port leds = XS1_PORT_4F;   //port to access xCore-200 LEDs
 #define FXOS8700EQ_OUT_Z_MSB 0x5
 #define FXOS8700EQ_OUT_Z_LSB 0x6
 
-char infname[] = "1024x1024.pgm";     //put your input image path here
+char infname[] = "512x512.pgm";     //put your input image path here
 char outfname[] = "testout.pgm";    //put your output image path here
 
 
@@ -52,6 +64,7 @@ char outfname[] = "testout.pgm";    //put your output image path here
 void DataInStream(char infname[], chanend cOut)
 {
   while(1){
+      printf("WORKERNO: %d\n", WORKERNO);
   int res;
   uchar line[ IMWD ];
 
@@ -90,53 +103,58 @@ void DataInStream(char infname[], chanend cOut)
 //
 /////////////////////////////////////////////////////////////////////////////////////////
 
-b_int setBit(b_int intByte[IMHT][IMWD/INTSIZE], int k, int y){
-    int i = k / INTSIZE;            //gives the corresponding index in the array A
-    int pos = k % INTSIZE;          //gives the corresponding bit position in A[i]
+b_int setBit(b_int intByte[IMHT][WORKERWD], int k, int y){
+    int i = k / INTSIZE;            //wanted index within the array of ints
+    int position = k % INTSIZE;     //position of bit within int
 
-    unsigned int flag = 1;   // flag = 0000.....00001
+    unsigned int bit = 1;           //0000...001
 
-    flag = flag << pos;      // flag = 0000...010...000   (shifted k positions)
+    bit = bit << position;          //shift the bit by k positions for comparison
 
-    intByte[y][i] = intByte[y][i] | flag;      // Set the bit at the k-th position in A[i]
-
-    return intByte[y][i];
-}
-
-b_int setWorkerBit(b_int intByte[WORKERHT][IMWD/INTSIZE], int k, int y){
-    int i = k / INTSIZE;            //gives the corresponding index in the array A
-    int pos = k % INTSIZE;          //gives the corresponding bit position in A[i]
-
-    unsigned int flag = 1;   // flag = 0000.....00001
-
-    flag = flag << pos;      // flag = 0000...010...000   (shifted k positions)
-
-    intByte[y][i] = intByte[y][i] | flag;      // Set the bit at the k-th position in A[i]
+    intByte[y][i] = intByte[y][i] | bit;      // Set the bit at the k-th position in A[i]
 
     return intByte[y][i];
 }
 
-b_int clearBit(b_int intByte[IMHT][IMWD/INTSIZE], int k, int y){
+b_int setWorkerBit(b_int intByte[WORKERHT][WORKERWD], int k, int y){
+    int i = k / INTSIZE;
+    int position = k % INTSIZE;
+
+    unsigned int bit = 1;
+
+    bit = bit << position;
+
+    intByte[y][i] = intByte[y][i] | bit;
+
+    return intByte[y][i];
+}
+
+b_int clearBit(b_int intByte[IMHT][WORKERWD], int k, int y){
     int i = k/32;
-    int pos = k%32;
+    int position = k%32;
 
-    unsigned int flag = 1;  // flag = 0000.....00001
+    unsigned int bit = 1;
 
-    flag = flag << pos;     // flag = 0000...010...000   (shifted k positions)
-    flag = ~flag;           // flag = 1111...101..111
+    bit = bit << position;
+    bit = ~bit;                 //negate byte so that chosen bit is 0
 
-    intByte[y][i] = intByte[y][i] & flag;     // RESET the bit at the k-th position in A[i]
+    intByte[y][i] = intByte[y][i] & bit;     // RESET the bit at the k-th position in intByte[y][i]
 
     return intByte[y][i];
 }
 
-b_int checkBit( b_int intByte[IMHT][IMWD/INTSIZE],  int k, int y){
+b_int checkBit( b_int intByte[IMHT][WORKERWD],  int k, int y){
       return ( (intByte[y][k / INTSIZE] & (1 << (k % INTSIZE) )) != 0 ) ;
 }
 
-b_int checkWorkerBit( b_int intByte[WORKERHT][IMWD/INTSIZE],  int k, int y){
+b_int checkWorkerBit( b_int intByte[WORKERHT][WORKERWD],  int k, int y){
       return ( (intByte[y][k / INTSIZE] & (1 << (k % INTSIZE) )) != 0 ) ;
 }
+
+b_int checkWorkerBitTEST( b_int intByte[WORKERNO][WORKERHT][WORKERWD],  int k, int y, int i){
+      return ( (intByte[i][y][k / INTSIZE] & (1 << (k % INTSIZE) )) != 0 ) ;
+}
+
 
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -191,13 +209,14 @@ void visualiser(chanend toLEDs, chanend fromDistributorRounds, chanend fromDistr
 
   while (1) {
     select{
-        case fromDistributorRounds :> round:
+        case fromDistributorRounds :> round:    //update round
             break;
-        case fromDistributorPaused :> paused:
+        case fromDistributorPaused :> paused:   //update pause state
             break;
-        case fromDataOut :> exporting:
+        case fromDataOut :> exporting:          //update exporting variable
             break;
     }
+    //ensure only one light on at any one time
     if (paused == 1) pattern = (round % 2) + 8;
     else if (exporting == 1) pattern = (round % 2) + 2;
     else pattern = (round % 2) + 4;
@@ -250,7 +269,7 @@ int flip(int n) {
 }
 
 
-void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, chanend cVisualiserRounds, chanend cVisualiserPaused, chanend cWorker[8], chanend cTilt, chanend cTimer)
+void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, chanend cVisualiserRounds, chanend cVisualiserPaused, chanend cWorker[WORKERNO], chanend cTilt, chanend cTimer)
 {
   uchar charVal;
   b_int intVal = 0;
@@ -260,22 +279,22 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
   float roundTime = 0;
   float totalTime = 0;
 
-  b_int packedBoard[IMHT][IMWD/INTSIZE];
-  b_int workerBoard[8][WORKERHT][IMWD/INTSIZE];
+  b_int packedBoard[IMHT][WORKERWD];
+  b_int workerBoard[WORKERNO][WORKERHT][WORKERWD];
 
   int round = 0;
 
 
-  //Starting up and wait for tilting of the xCore-200 Explorer
+  //Starting up and wait for press of button 1 on the xCore-200 Explorer
   printf( "ProcessImage: Start, size = %dx%d\n", IMHT, IMWD );
   printf( "Press Button 1 to begin...\n" );
   cButton1 :> int value;
   cVisualiserRounds <: 1;
 
   //initialise workerBoards
-  for (int i = 0; i < 8 ; i++){
+  for (int i = 0; i < WORKERNO ; i++){
     for( int y = 0; y < WORKERHT; y++ ) {   //initialise workerBoards
-      for( int x = 0; x < IMWD/INTSIZE; x++ ) { //go through each pixel per line
+      for( int x = 0; x < WORKERWD; x++ ) { //go through each pixel per line
           workerBoard[i][y][x] = 0;
       }
     }
@@ -283,7 +302,7 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
 
   //initialise packed board
   for( int y = 0; y < IMHT; y++ ) {   //initialise workerBoard 1
-    for( int x = 0; x < IMWD/INTSIZE; x++ ) { //go through each pixel per line
+    for( int x = 0; x < WORKERWD; x++ ) { //go through each pixel per line
         packedBoard[y][x] = 0;
     }
   }
@@ -340,12 +359,14 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
               //output board to console if button 2 is pressed
               for (int y = 0; y < IMHT; y++){
                   for (int x = 0; x < IMWD; x++){
+                      //convert from uint to uchar so that image can be exported
                       intVal = checkBit(packedBoard, x, y);
                       if (intVal == 1) charVal = 255;
                       else charVal = 0;
                       cOut <: charVal;
                   }
               }
+              //return control to button listener
               cButton2 <: chanBuffer;
               break;
 
@@ -366,37 +387,41 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
 
 
             //Initialise workerBoard insides
-            for (int i = 0; i < 8; i++){
-                for( int y = 0; y < WORKERHT - 2; y++ ) {   //initialise workerBoard 1
-                  for( int x = 0; x < IMWD/INTSIZE; x++ ) {     //go through each pixel per line
-                    workerBoard[i][y + 1][x] = packedBoard[y + (i * (IMHT/8))][x];
+            for (int i = 0; i < WORKERNO; i++){
+                for( int y = 0; y < WORKERHT - 2; y++ ) {
+                  for( int x = 0; x < WORKERWD; x++ ) {
+                    workerBoard[i][y + 1][x] = packedBoard[y + (i * (IMHT/WORKERNO))][x];
                   }
                 }
             }
 
 
             //Initialise workerBoard top/bottom
-            for (int h = 0; h < 8; h ++){
+            //go through each worker
+            for (int h = 0; h < WORKERNO; h ++){
+                //i = 0 for top, i = 1 for bottom
                 for (int i = 0; i < 2; i ++){
-                    for (int x = 0; x < IMWD/INTSIZE; x++){
+                    for (int x = 0; x < WORKERWD; x++){
+                        //exception for top of first workerboard as it loops around to the end of the whole board
                         if (i == 0){
                             if (h == 0) workerBoard[h][0][x] = packedBoard[IMHT - 1][x];
-                            else workerBoard[h][0][x] = packedBoard[((h*IMHT)/8) - 1][x];
+                            else workerBoard[h][0][x] = packedBoard[((h*IMHT)/WORKERNO) - 1][x];
                         }
+                        //cut into appropriate parts of the whole board to populate the rest of the workerboards
                         else{
-                            if (h == 7) workerBoard[h][WORKERHT - 1][x] = packedBoard[0][x];
-                            else workerBoard[h][WORKERHT - 1][x] = packedBoard[((h+1)*IMHT)/8][x];
+                            if (h == (WORKERNO - 1)) workerBoard[h][WORKERHT - 1][x] = packedBoard[0][x];
+                            else workerBoard[h][WORKERHT - 1][x] = packedBoard[((h+1)*IMHT)/WORKERNO][x];
                         }
                     }
                 }
             }
 
 
-            /*//Testing workerBoards
-            printf("ORIGINAL WORKERBOARD 1\n");
+            //Testing workerBoards
+            /*printf("ORIGINAL WORKERBOARD 1\n");
             for( int y = 0; y < WORKERHT; y++ ) {   //go through all lines
               for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
-                  printf("%4.1d ", checkWorkerBit(workerBoard, x, y, 0));
+                  printf("%4.1d ", checkWorkerBitTEST(workerBoard, x, y, 0));
               }
               printf("\n");
             }
@@ -404,7 +429,7 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
             printf("ORIGINAL WORKERBOARD 2\n");
             for( int y = 0; y < WORKERHT; y++ ) {   //go through all lines
                 for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
-                    printf("%4.1d ", checkWorkerBit(workerBoard, x, y, 1));
+                    printf("%4.1d ", checkWorkerBitTEST(workerBoard, x, y, 1));
                 }
                 printf("\n");
               }
@@ -412,7 +437,7 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
             printf("ORIGINAL WORKERBOARD 3\n");
             for( int y = 0; y < WORKERHT; y++ ) {   //go through all lines
                 for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
-                    printf("%4.1d ", checkWorkerBit(workerBoard, x, y, 2));
+                    printf("%4.1d ", checkWorkerBitTEST(workerBoard, x, y, 2));
                 }
                 printf("\n");
               }
@@ -420,7 +445,7 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
             printf("ORIGINAL WORKERBOARD 4\n");
             for( int y = 0; y < WORKERHT; y++ ) {   //go through all lines
                 for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
-                    printf("%4.1d ", checkWorkerBit(workerBoard, x, y, 3));
+                    printf("%4.1d ", checkWorkerBitTEST(workerBoard, x, y, 3));
                 }
                 printf("\n");
               }
@@ -462,9 +487,9 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
 
 
             // Initiate board in worker functions
-            for (int i = 0; i < 8; i++){
+            for (int i = 0; i < WORKERNO; i++){
                 for( int y = 0; y < WORKERHT; y++ ) {   //go through all lines
-                    for( int x = 0; x < IMWD/INTSIZE; x++ ) { //go through each pixel per line
+                    for( int x = 0; x < WORKERWD; x++ ) { //go through each pixel per line
 
                       cWorker[i] <: workerBoard[i][y][x];
                       cWorker[i] :> intVal;
@@ -473,7 +498,36 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
                 }
             }
 
-            // send work to each worker
+            //receive new updated cells to populate final board
+            for (int i = 0; i < WORKERNO; i++){
+                for(int y = 0; y < WORKERHT; y++){
+                    for (int x = 0; x < IMWD; x++){
+                        //send permission to worker to update cell
+                        cWorker[i] <: intVal;
+                        //receive updated cell
+                        cWorker[i] :> intVal;
+
+                        //ignoring extra rows from worker board
+                        if ((y != 0) && (y != (WORKERHT - 1))){
+                            //exception for first workerboard
+                            if (i == 0){
+                                if (intVal == 1)
+                                    setBit(packedBoard, x, (y - 1));
+                                else
+                                    clearBit(packedBoard, x, (y - 1));
+                            }
+                            else{
+                                if (intVal == 1)
+                                    setBit(packedBoard, x, y + (((i * IMHT)/WORKERNO)) - 1);
+                                else
+                                    clearBit(packedBoard, x, y + (((i * IMHT)/WORKERNO)) - 1);
+                            }
+                        }
+                    }
+                }
+            }
+
+            /*// send work to each worker
             for( int worker1y = 0; worker1y < WORKERHT; worker1y++ ) {   //go through all lines
                 for( int worker1x = 0; worker1x < IMWD; worker1x++ ) {
                     cWorker[0] <: intVal;                      //send permission to worker to update cell
@@ -510,9 +564,9 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
 
                     if ((worker3y != 0 && worker3y != (WORKERHT-1))){
                         if (intVal == 1)
-                            setBit(packedBoard, worker3x, worker3y + ((IMHT/4) - 1));
+                            setBit(packedBoard, worker3x, worker3y + (((2*IMHT)/WORKERNO) - 1));
                         else
-                            clearBit(packedBoard, worker3x, worker3y + ((IMHT/4) - 1));
+                            clearBit(packedBoard, worker3x, worker3y + (((2*IMHT)/WORKERNO) - 1));
                     }
                 }
             }
@@ -524,10 +578,9 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
 
                     if ((worker4y != 0 && worker4y != (WORKERHT-1))){
                         if (intVal == 1)
-                            setBit(packedBoard, worker4x, worker4y + ((3*(IMHT/8)) - 1));
+                            setBit(packedBoard, worker4x, worker4y + (((3*IMHT)/WORKERNO) - 1));
                         else{
-
-                            clearBit(packedBoard, worker4x, worker4y + ((3*(IMHT/8)) - 1));
+                            clearBit(packedBoard, worker4x, worker4y + (((3*IMHT)/WORKERNO) - 1));
                         }
                     }
                 }
@@ -591,7 +644,7 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
                         }
                     }
                 }
-            }
+            }*/
 
             round++;
             cVisualiserRounds <: round;
@@ -645,12 +698,14 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
 //
 /////////////////////////////////////////////////////////////////////////////////////////
 
-int countNeighbours(b_int board[WORKERHT][IMWD/INTSIZE], int y, int x){
+int countNeighbours(b_int board[WORKERHT][WORKERWD], int y, int x){
     int neighbourCount = 0;
 
+    //check all adjacent cells for living neighbours
     for (int i = -1; i < 2; i ++){
         for (int j = -1; j < 2; j ++){
             if (!((i == 0) && (j == 0))){
+                //mod by image width to check over the edge of the board
                 if (checkWorkerBit(board, ((x + i + IMWD) % IMWD), y + j) == 1){
                     neighbourCount++;
                 }
@@ -683,14 +738,14 @@ void worker(int index, chanend cWorker){
     b_int currentCell = 0;
     b_int updatedCell = 0;
     unsigned int aliveNeighbours = 0;
-    b_int board[WORKERHT][IMWD/INTSIZE];
-    b_int finalBoard[WORKERHT][IMWD/INTSIZE];
+    b_int board[WORKERHT][WORKERWD];
+    b_int finalBoard[WORKERHT][WORKERWD];
 
     while (round < MAX_ROUNDS){
 
         //initialise newBoard with 0s
         for (int y = 0; y < WORKERHT; y++){
-            for (int x = 0; x < IMWD/INTSIZE; x++){
+            for (int x = 0; x < WORKERWD; x++){
                 board[y][x] = 0;
                 finalBoard[y][x] = 0;
             }
@@ -698,7 +753,7 @@ void worker(int index, chanend cWorker){
 
         //populate input board
         for (int y = 0; y < WORKERHT; y++){
-            for (int x = 0; x < IMWD/INTSIZE; x++){
+            for (int x = 0; x < WORKERWD; x++){
                 cWorker :> currentCell;
                 board[y][x] = currentCell;
                 cWorker <: currentCell;
@@ -725,7 +780,6 @@ void worker(int index, chanend cWorker){
                     if (cellBuffer == 1){
                         setWorkerBit(finalBoard, x, y);
                     }
-                    //neighbourBoard[y][x] = aliveNeighbours;     //newBoard contains number of alive neighbours for each cell
                 }
             }
         }
@@ -867,26 +921,30 @@ int main(void) {
 i2c_master_if i2c[1];               //interface to orientation
 
 chan cInIO, cOutIO, cControl, cLEDs, cTimer;    //extend your channel definitions here
-chan cWorker[8], cButton[2], cVisualiser[3];
+chan cWorker[WORKERNO], cButton[2], cVisualiser[3];
 
 par {
     on tile[0]: i2c_master(i2c, 1, p_scl, p_sda, 10);  //server thread providing orientation data
     on tile[0]: orientation(i2c[0],cControl);        //client thread reading orientation data
     on tile[1]: DataInStream(infname, cInIO);          //thread to read in a PGM image
     on tile[1]: DataOutStream(outfname, cOutIO, cVisualiser[2]);       //thread to write out a PGM image
-    on tile[0]: distributor(cInIO, cOutIO, cButton[0], cButton[1], cVisualiser[0], cVisualiser[1], cWorker, cControl, cTimer);  //thread to coordinate work on image
-    on tile[1]: worker(0, cWorker[0]);
+    on tile[1]: distributor(cInIO, cOutIO, cButton[0], cButton[1], cVisualiser[0], cVisualiser[1], cWorker, cControl, cTimer);  //thread to coordinate work on image
+    /*on tile[1]: worker(0, cWorker[0]);
     on tile[1]: worker(1, cWorker[1]);
     on tile[1]: worker(2, cWorker[2]);
     on tile[1]: worker(3, cWorker[3]);
     on tile[1]: worker(4, cWorker[4]);
     on tile[0]: worker(5, cWorker[5]);
     on tile[0]: worker(6, cWorker[6]);
-    on tile[0]: worker(7, cWorker[7]);
+    on tile[0]: worker(7, cWorker[7]);*/
     on tile[0]: buttonListener(buttons, cButton[0], cButton[1]);
     on tile[0]: showLEDs(leds, cLEDs);
     on tile[0]: visualiser(cLEDs, cVisualiser[0], cVisualiser[1], cVisualiser[2]);
     on tile[1]: timerFunction(cTimer);
+
+    par (int i = 0; i < WORKERNO; i++){
+        on tile[i%2]: worker(i, cWorker[i]);
+    }
   }
 
   return 0;
