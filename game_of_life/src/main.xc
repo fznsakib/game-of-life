@@ -8,10 +8,10 @@
 #include <print.h>
 #include "i2c.h"
 
-#define  IMHT 512                  //image height
-#define  IMWD 512                 //image width
+#define  IMHT 64                  //image height
+#define  IMWD 64                  //image width
 
-#if (IMWD >= 32)                  //deciding type of int to use depending on image size
+#if (IMWD >= 32)                   //deciding type of int to use depending on image size
     #define b_int uint32_t
     #define INTSIZE 32
 #elif (IMWD >= 16)
@@ -19,10 +19,16 @@
     #define INTSIZE 16
 #endif
 
-#if (IMWD > 512)
+#if (IMWD > 512)                   //change number of workers depending on image size of input
     #define WORKERNO 4
 #elif (IMWD >= 16)
     #define WORKERNO 8
+#endif
+
+#if (WORKERNO == 4 || WORKERNO == 2)    //change distributor tile depending on how many workers
+    #define DISTRIBUTOR_TILE 0
+#elif (WORKERNO != 4)
+    #define DISTRIBUTOR_TILE 1
 #endif
 
 //#define  WORKERNO 8                        //number of workers
@@ -52,7 +58,7 @@ on tile[0] : out port leds = XS1_PORT_4F;   //port to access xCore-200 LEDs
 #define FXOS8700EQ_OUT_Z_MSB 0x5
 #define FXOS8700EQ_OUT_Z_LSB 0x6
 
-char infname[] = "512x512.pgm";     //put your input image path here
+char infname[] = "64x64.pgm";     //put your input image path here
 char outfname[] = "testout.pgm";    //put your output image path here
 
 
@@ -64,7 +70,6 @@ char outfname[] = "testout.pgm";    //put your output image path here
 void DataInStream(char infname[], chanend cOut)
 {
   while(1){
-      printf("WORKERNO: %d\n", WORKERNO);
   int res;
   uchar line[ IMWD ];
 
@@ -227,19 +232,20 @@ void visualiser(chanend toLEDs, chanend fromDistributorRounds, chanend fromDistr
 void timerFunction(chanend toDistributor){
     timer t;
     int timerOn = 0;
-    uint32_t startTime, endTime, initialValue;
+    uint32_t startTime, endTime;
     float roundTime;
     float totalElapsedTime = 0;
     float period = 100000000;
 
     while(1){
-        select{
+        /*select{
             case t when timerafter(100000000) :> void:
-                if (startTime < endTime){
-
+                t :> bufferTime;
+                if (bufferTime < endTime){
+                    printf("clock restarted\n");
                 }
                 break;
-        }
+        }*/
         toDistributor :> timerOn;
         if (timerOn == 3){
             toDistributor <: totalElapsedTime;
@@ -374,17 +380,9 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
           ////////////////////    Main distribution code    //////////////////////
           ////////////////////////////////////////////////////////////////////////
           default:
+
             //Start timer
             cTimer <: 1;
-
-            /*printf("INITIAL BOARD\n");
-            for (int y = 0; y < IMHT; y++){
-                for (int x = 0; x < IMWD; x++){
-                    printf("%4.1d ", checkBit(packedBoard, x, y));
-                }
-            printf("\n");
-            }*/
-
 
             //Initialise workerBoard insides
             for (int i = 0; i < WORKERNO; i++){
@@ -480,11 +478,6 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
                 }
                 printf("\n");
               }*/
-
-
-            //Take val from worker then send to data out
-            //printf( "Processing...\n" );
-
 
             // Initiate board in worker functions
             for (int i = 0; i < WORKERNO; i++){
@@ -659,11 +652,13 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
                   printf("\n");
             }*/
 
-
             printf( "\nProcessing round %d completed. Elapsed round time: %fs\n", round, roundTime);
 
             //final export on round 100
             if (round == MAX_ROUNDS){
+                cTimer <: 3;
+                cTimer :> totalTime;
+                printf("TOTAL TIME: %fs\n",totalTime);
                 printf("Begin exporting...\n");
                 aliveCells = 0;
                 cOut <: intVal;
@@ -678,8 +673,8 @@ void distributor(chanend cIn, chanend cOut, chanend cButton1, chanend cButton2, 
                         cOut <: charVal;
                     }
                 }
-                cTimer <: 3;
-                cTimer :> totalTime;
+                /*cTimer <: 3;
+                cTimer :> totalTime;*/
                 printf("FINAL STATUS REPORT: \n");
                 printf("Number of rounds processsed: %d\n", round);
                 printf("Number of alive cells in current configuration: %d\n", aliveCells);
@@ -928,7 +923,7 @@ par {
     on tile[0]: orientation(i2c[0],cControl);        //client thread reading orientation data
     on tile[1]: DataInStream(infname, cInIO);          //thread to read in a PGM image
     on tile[1]: DataOutStream(outfname, cOutIO, cVisualiser[2]);       //thread to write out a PGM image
-    on tile[1]: distributor(cInIO, cOutIO, cButton[0], cButton[1], cVisualiser[0], cVisualiser[1], cWorker, cControl, cTimer);  //thread to coordinate work on image
+    on tile[DISTRIBUTOR_TILE]: distributor(cInIO, cOutIO, cButton[0], cButton[1], cVisualiser[0], cVisualiser[1], cWorker, cControl, cTimer);  //thread to coordinate work on image
     /*on tile[1]: worker(0, cWorker[0]);
     on tile[1]: worker(1, cWorker[1]);
     on tile[1]: worker(2, cWorker[2]);
